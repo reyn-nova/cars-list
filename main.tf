@@ -9,6 +9,10 @@ terraform {
 
 provider "docker" {}
 
+resource "docker_network" "cars_net" {
+  name = "cars-net"
+}
+
 resource "docker_volume" "db_data" {
   name = "cars_db_data"
 }
@@ -48,6 +52,10 @@ resource "docker_container" "db" {
     retries      = 5
   }
 
+  networks_advanced {
+    name = docker_network.cars_net.name
+  }
+
   volumes {
     volume_name    = docker_volume.db_data.name
     container_path = "/var/lib/postgresql/data"
@@ -69,6 +77,10 @@ resource "docker_container" "app" {
     "PG_PASSWORD=postgres",
     "PG_DATABASE=cars",
   ]
+
+  networks_advanced {
+    name = docker_network.cars_net.name
+  }
 
   ports {
     internal = 3000
