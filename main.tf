@@ -15,6 +15,10 @@ resource "docker_network" "cars_net" {
 
 resource "docker_volume" "db_data" {
   name = "cars_db_data"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "docker_image" "db" {
@@ -51,6 +55,8 @@ resource "docker_container" "db" {
     timeout      = "5s"
     retries      = 5
   }
+
+  remove_volumes = false
 
   networks_advanced {
     name = docker_network.cars_net.name
