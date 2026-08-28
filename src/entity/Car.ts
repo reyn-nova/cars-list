@@ -11,4 +11,7 @@ export class Car {
 
   @Column()
   type!: string;
+
+  @Column({ nullable: true })
+  photoUrl?: string;
 }

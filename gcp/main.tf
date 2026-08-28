@@ -27,3 +27,18 @@ resource "google_storage_bucket" "cars_bucket" {
     }
   }
 }
+
+# Make objects publicly readable so photo URLs returned by the API work
+resource "google_storage_bucket_iam_member" "public_read" {
+  bucket = google_storage_bucket.cars_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
+output "bucket_name" {
+  value = google_storage_bucket.cars_bucket.name
+}
+
+output "public_url_base" {
+  value = "https://storage.googleapis.com/${google_storage_bucket.cars_bucket.name}"
+}

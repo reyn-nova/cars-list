@@ -1,10 +1,12 @@
 import "reflect-metadata";
 import express from "express";
 import swaggerUi from "swagger-ui-express";
+import multer from "multer";
 import { AppDataSource } from "./data-source";
 import { Car } from "./entity/Car";
 import { ILike } from "typeorm";
 import { swaggerSpec } from "./swagger";
+import { getStorageClient, getPublicUrl } from "./gcs";
 
 const app = express();
 app.use(express.json());
@@ -23,6 +25,9 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
  *           type: string
  *         type:
  *           type: string
+ *         photoUrl:
+ *           type: string
+ *           nullable: true
  *     NewCar:
  *       type: object
  *       required:
@@ -161,6 +166,79 @@ app.delete("/cars", async (req, res) => {
     const repo = AppDataSource.getRepository(Car);
     const result = await repo.delete(ids);
     res.json({ deleted: result.affected ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+});
+
+/**
+ * @openapi
+ * /cars/{id}/photo:
+ *   post:
+ *     summary: Upload a photo for a car (stored in GCS, URL saved on the car)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               photo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Car with updated photoUrl
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Car'
+ *       400:
+ *         description: photo file is required
+ *       404:
+ *         description: Car not found
+ *       500:
+ *         description: GCS not configured or upload failed
+ */
+app.post("/cars/:id/photo", upload.single("photo"), async (req, res) => {
+  const id = Number(req.params.id);
+  const bucketName = process.env.GCS_BUCKET;
+  const file = req.file;
+
+  if (!bucketName) {
+    return res.status(500).json({ error: "GCS_BUCKET environment variable is not set" });
+  }
+  if (!file) {
+    return res.status(400).json({ error: "photo file is required" });
+  }
+
+  try {
+    const repo = AppDataSource.getRepository(Car);
+    const car = await repo.findOne({ where: { id } });
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
+    const storage = getStorageClient();
+    const filename = `cars/${id}-${Date.now()}-${file.originalname}`;
+    const blob = storage.bucket(bucketName).file(filename);
+    await blob.save(file.buffer, { metadata: { contentType: file.mimetype } });
+
+    car.photoUrl = getPublicUrl(bucketName, filename);
+    await repo.save(car);
+
+    res.json(car);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

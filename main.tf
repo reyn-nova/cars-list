@@ -9,6 +9,11 @@ terraform {
 
 provider "docker" {}
 
+variable "gcs_bucket" {
+  description = "GCS bucket for car photos (optional; leave empty to disable uploads in-container)"
+  default     = ""
+}
+
 resource "docker_network" "cars_net" {
   name = "cars-net"
 }
@@ -82,6 +87,7 @@ resource "docker_container" "app" {
     "PG_USER=postgres",
     "PG_PASSWORD=postgres",
     "PG_DATABASE=cars",
+    "GCS_BUCKET=${var.gcs_bucket}",
   ]
 
   networks_advanced {
