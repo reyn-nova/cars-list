@@ -57,6 +57,48 @@ Notes:
 - `synchronize: true` auto-creates the `cars` table on first run.
 - Stop: `docker compose down` (or `docker-compose down`). Wipe the DB too: `docker compose down -v`.
 
+## Running with Terraform
+
+This project can also be provisioned with Terraform using the **Docker provider** (no cloud account required). It replaces `docker-compose.yml` with `main.tf`.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed and running
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) CLI installed
+
+### Usage
+
+```bash
+terraform init      # download the docker provider (needs internet, once)
+terraform apply     # build the app image and start db + app containers
+```
+
+The API is available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/api-docs`.
+
+Inspect the plan before applying:
+
+```bash
+terraform plan
+```
+
+Tear everything down:
+
+```bash
+terraform destroy
+```
+
+### Deploying to a server
+
+On a server with Docker + Terraform installed, pull and apply in one step:
+
+```bash
+./deploy.sh   # git pull && terraform init && terraform apply
+```
+
+Notes:
+- Container env vars (ports, Postgres credentials) live in `main.tf`, not `.env`. `.env` is only used for local `npm run dev`.
+- `terraform.tfstate` and `.terraform/` are gitignored; keep state on the server that runs `apply`.
+
 ## API examples
 
 ```bash
