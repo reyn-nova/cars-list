@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.example
+.terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+.git
+.gitignore
+*.md
+deploy.sh
