@@ -10,6 +10,11 @@ A minimal REST API to manage a list of cars, built with **Express.js** and **Typ
 - `GET /health` — health check (used by container healthchecks)
 - Swagger docs at `/api-docs`
 
+> **Authentication:** write endpoints (`POST /cars`, `DELETE /cars`) and all photo
+> endpoints require a shared API key. Send it as `Authorization: Bearer <API_KEY>`
+> or via the `X-API-Key` header. Set `API_KEY` in the environment (see `.env.example`).
+> Read-only routes (`GET /cars`, `GET /health`) are public.
+
 ## Local development
 
 Requires Node.js and a PostgreSQL database.

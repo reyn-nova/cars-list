@@ -33,6 +33,13 @@ variable "aws_region" {
   default     = ""
 }
 
+variable "api_key" {
+  description = "Shared API key required for write/photo endpoints (passed at apply time, not stored in repo)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 resource "docker_network" "cars_net" {
   name = "cars-net"
 }
@@ -111,6 +118,7 @@ resource "docker_container" "app" {
     "AWS_ACCESS_KEY_ID=${var.aws_access_key}",
     "AWS_SECRET_ACCESS_KEY=${var.aws_secret_key}",
     "AWS_REGION=${var.aws_region}",
+    "API_KEY=${var.api_key}",
   ]
 
   networks_advanced {

@@ -12,6 +12,7 @@ import rateLimit from "express-rate-limit";
 import { HttpError, asyncHandler, errorHandler } from "./errors";
 import { newCarListSchema, idListSchema, photoUrlSchema } from "./validation";
 import { assertPublicUrl } from "./ssrf";
+import { requireApiKey } from "./auth";
 
 const app = express();
 app.use(express.json());
@@ -138,6 +139,8 @@ app.get(
  * /cars:
  *   post:
  *     summary: Add one or more cars
+ *     security:
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -158,6 +161,7 @@ app.get(
  */
 app.post(
   "/cars",
+  requireApiKey,
   asyncHandler(async (req, res) => {
     const parsed = newCarListSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -175,6 +179,8 @@ app.post(
  * /cars:
  *   delete:
  *     summary: Delete one or more cars
+ *     security:
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -200,6 +206,7 @@ app.post(
  */
 app.delete(
   "/cars",
+  requireApiKey,
   asyncHandler(async (req, res) => {
     const parsed = idListSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -224,6 +231,8 @@ app.delete(
  * /cars/{id}/photo:
  *   post:
  *     summary: Upload a photo for a car (stored in S3, URL saved on the car)
+ *     security:
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -257,6 +266,7 @@ app.delete(
 app.post(
   "/cars/:id/photo",
   photoLimiter,
+  requireApiKey,
   (req, res, next) => upload.single("photo")(req, res, next),
   asyncHandler(handlePhotoUpload)
 );
@@ -266,6 +276,8 @@ app.post(
  * /cars/{id}/photo-url:
  *   post:
  *     summary: Store a photo from a URL (server fetches, then uploads to S3)
+ *     security:
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -300,6 +312,7 @@ app.post(
 app.post(
   "/cars/:id/photo-url",
   photoLimiter,
+  requireApiKey,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const bucketName = process.env.S3_BUCKET;
@@ -355,6 +368,8 @@ app.post(
  * /cars/{id}/photo:
  *   delete:
  *     summary: Delete a car's photo (removes the S3 object and clears photoUrl)
+ *     security:
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -373,6 +388,7 @@ app.post(
  */
 app.delete(
   "/cars/:id/photo",
+  requireApiKey,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const bucketName = process.env.S3_BUCKET;
