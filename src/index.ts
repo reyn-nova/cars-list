@@ -6,7 +6,8 @@ import { AppDataSource } from "./data-source";
 import { Car } from "./entity/Car";
 import { ILike } from "typeorm";
 import { swaggerSpec } from "./swagger";
-import { getStorageClient, getPublicUrl } from "./gcs";
+import { getS3Client, getPublicUrl } from "./s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 
 const app = express();
 app.use(express.json());
@@ -209,15 +210,15 @@ const upload = multer({
  *       404:
  *         description: Car not found
  *       500:
- *         description: GCS not configured or upload failed
+ *         description: S3 not configured or upload failed
  */
 app.post("/cars/:id/photo", upload.single("photo"), async (req, res) => {
   const id = Number(req.params.id);
-  const bucketName = process.env.GCS_BUCKET;
+  const bucketName = process.env.S3_BUCKET;
   const file = req.file;
 
   if (!bucketName) {
-    return res.status(500).json({ error: "GCS_BUCKET environment variable is not set" });
+    return res.status(500).json({ error: "S3_BUCKET environment variable is not set" });
   }
   if (!file) {
     return res.status(400).json({ error: "photo file is required" });
@@ -230,10 +231,16 @@ app.post("/cars/:id/photo", upload.single("photo"), async (req, res) => {
       return res.status(404).json({ error: "Car not found" });
     }
 
-    const storage = getStorageClient();
+    const s3 = getS3Client();
     const filename = `cars/${id}-${Date.now()}-${file.originalname}`;
-    const blob = storage.bucket(bucketName).file(filename);
-    await blob.save(file.buffer, { metadata: { contentType: file.mimetype } });
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: filename,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      })
+    );
 
     car.photoUrl = getPublicUrl(bucketName, filename);
     await repo.save(car);

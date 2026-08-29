@@ -9,8 +9,8 @@ terraform {
 
 provider "docker" {}
 
-variable "gcs_bucket" {
-  description = "GCS bucket for car photos (optional; leave empty to disable uploads in-container)"
+variable "s3_bucket" {
+  description = "S3 bucket for car photos (optional; leave empty to disable uploads in-container)"
   default     = ""
 }
 
@@ -87,7 +87,7 @@ resource "docker_container" "app" {
     "PG_USER=postgres",
     "PG_PASSWORD=postgres",
     "PG_DATABASE=cars",
-    "GCS_BUCKET=${var.gcs_bucket}",
+    "S3_BUCKET=${var.s3_bucket}",
   ]
 
   networks_advanced {

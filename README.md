@@ -115,10 +115,21 @@ curl "http://localhost:3000/cars?name=tesla"
 # Delete by id
 curl -X DELETE http://localhost:3000/cars -H "Content-Type: application/json" -d '[1, 2]'
 
-# Upload a photo for car #1 (stored in GCS, URL saved on the car)
+# Upload a photo for car #1 (stored in S3, URL saved on the car)
 curl -X POST http://localhost:3000/cars/1/photo -F "photo=@/path/to/image.jpg"
 ```
 
-The photo endpoint uploads the file to the GCS bucket set by `GCS_BUCKET` and stores the
-public URL in `car.photoUrl`. Requires GCP credentials available to the app
-(`gcloud auth application-default login` for local dev, or a service account in containers).
+The photo endpoint uploads the file to the S3 bucket set by `S3_BUCKET` and stores the
+public URL in `car.photoUrl`. Requires AWS credentials available to the app
+(`aws configure` / `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for local dev, or an IAM role in containers).
+
+## Terraform on AWS (S3)
+
+`aws/main.tf` provisions an S3 bucket (public-read objects) for car photos — a free-tier-friendly
+way to test Terraform's AWS provider. Requires AWS credentials configured locally.
+
+```bash
+cd aws
+terraform init
+terraform apply
+```
