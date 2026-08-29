@@ -14,6 +14,25 @@ variable "s3_bucket" {
   default     = ""
 }
 
+variable "aws_access_key" {
+  description = "AWS access key id for S3 uploads (passed at runtime, not stored in repo)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "aws_secret_key" {
+  description = "AWS secret access key for S3 uploads (passed at runtime, not stored in repo)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "aws_region" {
+  description = "AWS region"
+  default     = "us-east-1"
+}
+
 resource "docker_network" "cars_net" {
   name = "cars-net"
 }
@@ -88,6 +107,9 @@ resource "docker_container" "app" {
     "PG_PASSWORD=postgres",
     "PG_DATABASE=cars",
     "S3_BUCKET=${var.s3_bucket}",
+    "AWS_ACCESS_KEY_ID=${var.aws_access_key}",
+    "AWS_SECRET_ACCESS_KEY=${var.aws_secret_key}",
+    "AWS_REGION=${var.aws_region}",
   ]
 
   networks_advanced {
