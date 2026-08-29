@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
 
-@Entity()
+@Entity("cars")
 export class Car {
   @PrimaryGeneratedColumn()
   id!: number;
