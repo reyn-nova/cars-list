@@ -100,6 +100,7 @@ resource "docker_container" "app" {
   depends_on = [docker_container.db]
 
   env = [
+    "NODE_ENV=production",
     "PORT=3000",
     "PG_HOST=cars-db",
     "PG_PORT=5432",
@@ -119,5 +120,12 @@ resource "docker_container" "app" {
   ports {
     internal = 3000
     external = 3000
+  }
+
+  healthcheck {
+    test         = ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+    interval     = "30s"
+    timeout      = "5s"
+    retries      = 5
   }
 }

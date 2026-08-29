@@ -4,9 +4,10 @@ A minimal REST API to manage a list of cars, built with **Express.js** and **Typ
 
 ## Features
 
-- `GET /cars` — list all cars, with optional `?name=` case-insensitive search
+- `GET /cars` — list all cars, with optional `?name=` case-insensitive search and `?limit=` / `?offset=` pagination (limit capped at 100)
 - `POST /cars` — add one or more cars (array, min 1; `name` and `type` required per car)
 - `DELETE /cars` — delete one or more cars by `id` (array, min 1)
+- `GET /health` — health check (used by container healthchecks)
 - Swagger docs at `/api-docs`
 
 ## Local development
@@ -131,6 +132,21 @@ curl -X DELETE http://localhost:3000/cars/1/photo
 The photo endpoint uploads the file to the S3 bucket set by `S3_BUCKET` and stores the
 public URL in `car.photoUrl`. Requires AWS credentials available to the app
 (`aws configure` / `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for local dev, or an IAM role in containers).
+
+> **Public-read access:** objects rely on a bucket policy that allows `s3:GetObject`
+> for everyone (see `aws/main.tf`). The code does **not** set an object ACL, because
+> buckets with the AWS default "Bucket owner enforced" object ownership reject ACLs and
+> would fail the upload. Provision your bucket with `aws/main.tf` (or apply an equivalent
+> public-read bucket policy) so the returned URLs actually resolve.
+
+> **SSRF protection:** the `photo-url` endpoint only fetches URLs that resolve to a
+> public IP and are `http(s)`; internal/metadata addresses (`127.0.0.1`, `169.254.169.254`,
+> `192.168.x`, etc.) are rejected.
+
+> **Schema & migrations:** in production (`NODE_ENV=production`, set by the Docker/Terraform
+> configs) the schema is managed by TypeORM migrations (`src/migration`) and `synchronize`
+> is disabled so it can never auto-mutate the DB. Local `npm run dev` keeps `synchronize: true`
+> for convenience.
 
 ## Terraform on AWS (S3)
 
