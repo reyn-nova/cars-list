@@ -13,8 +13,13 @@ provider "aws" {
   # or ~/.aws/credentials — no hard-coded secrets here.
 }
 
+variable "bucket_name" {
+  description = "S3 bucket name (supplied at apply time via -var or TF_VAR_bucket_name, not hardcoded)"
+  default     = ""
+}
+
 resource "aws_s3_bucket" "cars_bucket" {
-  bucket = "amzn-s3-cars-list" # must be globally unique
+  bucket = var.bucket_name # must be globally unique
 }
 
 # Allow public objects (so photo URLs returned by the API work)
