@@ -1,4 +1,5 @@
 import dns from "node:dns";
+import { Agent, fetch as undiciFetch } from "undici";
 import { HttpError } from "./errors";
 
 export function isPrivateIp(ip: string): boolean {
@@ -27,8 +28,8 @@ export function isPrivateIp(ip: string): boolean {
   return false;
 }
 
-// Guards against SSRF: the server must not be tricked into fetching internal
-// services (e.g. 169.254.169.254, localhost) on behalf of a caller.
+// Quick pre-check: reject non-http(s) and hostnames that resolve to ANY
+// private address. Gives a clean 400 without opening a connection.
 export async function assertPublicUrl(raw: string): Promise<void> {
   let url: URL;
   try {
@@ -39,8 +40,64 @@ export async function assertPublicUrl(raw: string): Promise<void> {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new HttpError(400, "Only http(s) URLs are allowed");
   }
-  const { address } = await dns.promises.lookup(url.hostname);
-  if (isPrivateIp(address)) {
+  const addresses = await dns.promises.lookup(url.hostname, { all: true });
+  if (addresses.some((a) => isPrivateIp(a.address))) {
     throw new HttpError(400, "URL resolves to a disallowed (private) address");
   }
+}
+
+// Custom DNS lookup used by the actual TCP connection. Re-resolves and rejects
+// private addresses at connect time, which closes the DNS-rebinding TOCTOU gap
+// (the address used for the real socket is the one we validate, not an earlier
+// resolution) and applies to every redirect hop followed by fetch.
+function secureLookup(
+  hostname: string,
+  options: { all?: boolean },
+  callback: (err: NodeJS.ErrnoException | null, address?: unknown, family?: number) => void
+): void {
+  dns.lookup(hostname, { all: true }, (err, addresses) => {
+    if (err) {
+      callback(err);
+      return;
+    }
+    if (addresses.some((a) => isPrivateIp(a.address))) {
+      callback(new Error("Resolved to a disallowed (private) address"));
+      return;
+    }
+    if (options?.all) {
+      callback(null, addresses as unknown as string, 0);
+      return;
+    }
+    const chosen = addresses[0];
+    callback(null, chosen.address, chosen.family);
+  });
+}
+
+const secureAgent = new Agent({
+  connect: {
+    lookup: secureLookup as never,
+    timeout: 10_000,
+  },
+});
+
+// Hardened fetch for the photo-url endpoint: only http(s), and the socket is
+// only ever opened to a validated public IP (re-checked per redirect).
+export async function safeFetch(
+  url: string,
+  init: { signal?: AbortSignal; redirect?: "follow" | "manual" | "error" } = {}
+) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new HttpError(400, "Invalid URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new HttpError(400, "Only http(s) URLs are allowed");
+  }
+  return undiciFetch(url, {
+    signal: init.signal,
+    redirect: init.redirect ?? "follow",
+    dispatcher: secureAgent,
+  });
 }

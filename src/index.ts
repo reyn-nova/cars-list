@@ -11,7 +11,7 @@ import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import rateLimit from "express-rate-limit";
 import { HttpError, asyncHandler, errorHandler } from "./errors";
 import { newCarListSchema, idListSchema, photoUrlSchema } from "./validation";
-import { assertPublicUrl } from "./ssrf";
+import { assertPublicUrl, safeFetch } from "./ssrf";
 import { requireApiKey } from "./auth";
 
 const app = express();
@@ -334,13 +334,11 @@ app.post(
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
-    let resp: globalThis.Response;
+    let resp;
     try {
-      resp = await fetch(parsed.data.url, {
-        signal: controller.signal,
-        redirect: "follow",
-      });
-    } catch {
+      resp = await safeFetch(parsed.data.url, { signal: controller.signal });
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
       throw new HttpError(400, "Failed to fetch image from URL");
     } finally {
       clearTimeout(timeout);
