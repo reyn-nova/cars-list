@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-git pull --ff-only
+# Re-exec ourselves after pulling so we always run the latest script content.
+# (If we `git pull` in place, bash loses its read position in this file and the
+# run gets truncated — that's why the apply step could be skipped.)
+if [[ -z "${DEPLOY_PULLED:-}" ]]; then
+  export DEPLOY_PULLED=1
+  git pull --ff-only
+  exec "$0" "$@"
+fi
+
 terraform init -input=false
 
 TFVARS="terraform.tfvars"
