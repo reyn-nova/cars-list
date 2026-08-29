@@ -165,6 +165,23 @@ app.delete("/cars", async (req, res) => {
   }
   try {
     const repo = AppDataSource.getRepository(Car);
+    const bucketName = process.env.S3_BUCKET;
+
+    // Delete each car's photo from S3 first (if configured)
+    if (bucketName) {
+      const cars = await repo.find({ where: ids.map((id: number) => ({ id })) });
+      const s3 = getS3Client();
+      for (const car of cars) {
+        const key = s3KeyFromUrl(car.photoUrl ?? "");
+        if (!key) continue;
+        try {
+          await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
+        } catch (e) {
+          console.error(`Failed to delete S3 object for car ${car.id}:`, e);
+        }
+      }
+    }
+
     const result = await repo.delete(ids);
     res.json({ deleted: result.affected ?? 0 });
   } catch (err) {
