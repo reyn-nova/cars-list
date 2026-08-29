@@ -14,11 +14,12 @@ terraform init -input=false
 
 TFVARS="terraform.tfvars"
 
-# Read any existing api_key so we can offer to keep it.
+# Read any existing api_key. grep returns 1 on no match, so `|| true` keeps
+# `set -e` from aborting the script when the file is missing or has no match.
 EXISTING=""
 if [[ -f "$TFVARS" ]]; then
-  EXISTING=$(grep -E '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" \
-    | head -1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/')
+  EXISTING=$(grep -E '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" 2>/dev/null \
+    | head -1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)
 fi
 
 if [[ -n "$EXISTING" ]]; then
@@ -44,10 +45,12 @@ else
   echo "No existing API key found; generated a new one."
 fi
 
-# Persist the chosen key to terraform.tfvars (gitignored) so future runs can keep it.
+# Persist the chosen key, preserving any other tfvars content.
+# grep -v returns 1 when it drops every line; `|| true` prevents that from
+# aborting the script.
 TMP=$(mktemp)
 if [[ -f "$TFVARS" ]]; then
-  grep -vE '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" > "$TMP"
+  grep -vE '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" > "$TMP" 2>/dev/null || true
 fi
 echo "api_key = \"$API_KEY\"" >> "$TMP"
 mv "$TMP" "$TFVARS"
