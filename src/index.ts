@@ -7,7 +7,7 @@ import { Car } from "./entity/Car";
 import { ILike } from "typeorm";
 import { swaggerSpec } from "./swagger";
 import { getS3Client, getPublicUrl } from "./s3";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const app = express();
 app.use(express.json());
@@ -242,6 +242,20 @@ async function handlePhotoUpload(req: express.Request, res: express.Response) {
 
     const s3 = getS3Client();
     const filename = `cars/${id}-${Date.now()}-${file.originalname}`;
+
+    // Remove the previous photo from S3 so re-uploads don't leave orphans
+    if (car.photoUrl) {
+      const oldKey = car.photoUrl.replace(
+        `https://${bucketName}.s3.amazonaws.com/`,
+        ""
+      );
+      if (oldKey && !oldKey.includes("://")) {
+        await s3.send(
+          new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey })
+        );
+      }
+    }
+
     await s3.send(
       new PutObjectCommand({
         Bucket: bucketName,
