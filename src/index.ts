@@ -294,6 +294,65 @@ app.post("/cars/:id/photo-url", async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /cars/{id}/photo:
+ *   delete:
+ *     summary: Delete a car's photo (removes the S3 object and clears photoUrl)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Car with photoUrl cleared
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Car'
+ *       404:
+ *         description: Car not found
+ */
+app.delete("/cars/:id/photo", async (req, res) => {
+  const id = Number(req.params.id);
+  const bucketName = process.env.S3_BUCKET;
+
+  if (!bucketName) {
+    return res.status(500).json({ error: "S3_BUCKET environment variable is not set" });
+  }
+
+  try {
+    const repo = AppDataSource.getRepository(Car);
+    const car = await repo.findOne({ where: { id } });
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
+    const oldKey = s3KeyFromUrl(car.photoUrl ?? "");
+    if (oldKey) {
+      await getS3Client().send(
+        new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey })
+      );
+      car.photoUrl = undefined;
+      await repo.save(car);
+    }
+
+    res.json(car);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+function s3KeyFromUrl(photoUrl: string): string {
+  try {
+    return new URL(photoUrl).pathname.replace(/^\/+/, "");
+  } catch {
+    return "";
+  }
+}
+
 async function saveCarPhoto(
   car: Car,
   buffer: Buffer,
@@ -306,11 +365,9 @@ async function saveCarPhoto(
   const filename = `cars/${car.id}-${Date.now()}.${ext}`;
 
   // Remove the previous photo from S3 so re-uploads don't leave orphans
-  if (car.photoUrl) {
-    const oldKey = car.photoUrl.replace(`https://${bucketName}.s3.amazonaws.com/`, "");
-    if (oldKey && !oldKey.includes("://")) {
-      await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }));
-    }
+  const oldKey = s3KeyFromUrl(car.photoUrl ?? "");
+  if (oldKey) {
+    await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }));
   }
 
   await s3.send(

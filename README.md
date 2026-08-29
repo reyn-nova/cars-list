@@ -124,6 +124,10 @@ curl -X POST http://localhost:3000/cars/1/photo-url -H "Content-Type: applicatio
 ```
 Both endpoints enforce a 512 KB max and replace any existing photo.
 
+# Delete a car's photo (removes the S3 object and clears photoUrl)
+curl -X DELETE http://localhost:3000/cars/1/photo
+```
+
 The photo endpoint uploads the file to the S3 bucket set by `S3_BUCKET` and stores the
 public URL in `car.photoUrl`. Requires AWS credentials available to the app
 (`aws configure` / `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for local dev, or an IAM role in containers).
