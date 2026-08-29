@@ -174,7 +174,7 @@ app.delete("/cars", async (req, res) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  limits: { fileSize: 512 * 1024 }, // 512 KB max
 });
 
 /**
@@ -212,7 +212,16 @@ const upload = multer({
  *       500:
  *         description: S3 not configured or upload failed
  */
-app.post("/cars/:id/photo", upload.single("photo"), async (req, res) => {
+app.post("/cars/:id/photo", (req, res) => {
+  upload.single("photo")(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    handlePhotoUpload(req, res);
+  });
+});
+
+async function handlePhotoUpload(req: express.Request, res: express.Response) {
   const id = Number(req.params.id);
   const bucketName = process.env.S3_BUCKET;
   const file = req.file;
@@ -249,7 +258,7 @@ app.post("/cars/:id/photo", upload.single("photo"), async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
-});
+}
 
 const port = Number(process.env.PORT) || 3000;
 
