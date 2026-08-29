@@ -14,8 +14,16 @@ if [[ -f "$TFVARS" ]]; then
 fi
 
 if [[ -n "$EXISTING" ]]; then
+  echo "==========================================================="
+  echo "API key management"
   echo "Current API key: ${EXISTING:0:8}... (${#EXISTING} chars)"
-  read -r -p "Rotate API key? (y/N) " ROTATE
+  if [[ -t 0 ]]; then
+    read -r -p "Rotate API key? (y/N) " ROTATE
+  else
+    echo "Non-interactive run detected: keeping the existing API key."
+    echo "(Run ./deploy.sh from an interactive shell to be prompted to rotate.)"
+    ROTATE=""
+  fi
   if [[ "$ROTATE" =~ ^[Yy]$ ]]; then
     API_KEY=$(openssl rand -hex 32)
     echo "Generated a NEW API key."
