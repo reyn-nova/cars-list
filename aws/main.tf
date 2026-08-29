@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "ap-southeast-3"
+  # region is taken from the AWS_REGION environment variable (not hardcoded here)
   # credentials are picked up from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
   # or ~/.aws/credentials — no hard-coded secrets here.
 }

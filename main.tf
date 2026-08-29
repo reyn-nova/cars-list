@@ -29,8 +29,8 @@ variable "aws_secret_key" {
 }
 
 variable "aws_region" {
-  description = "AWS region"
-  default     = "ap-southeast-3"
+  description = "AWS region (supplied at apply time via -var or TF_VAR_aws_region, not hardcoded)"
+  default     = ""
 }
 
 resource "docker_network" "cars_net" {
