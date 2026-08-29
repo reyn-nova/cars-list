@@ -14,7 +14,7 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "cars_bucket" {
-  bucket = "cars-list-bucket-unique123" # must be globally unique
+  bucket = "amzn-s3-cars-list" # must be globally unique
 }
 
 # Allow public objects (so photo URLs returned by the API work)
