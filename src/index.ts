@@ -4,7 +4,7 @@ import swaggerUi from "swagger-ui-express";
 import multer from "multer";
 import { AppDataSource } from "./data-source";
 import { Car } from "./entity/Car";
-import { ILike } from "typeorm";
+import { ILike, Repository } from "typeorm";
 import { swaggerSpec } from "./swagger";
 import { getS3Client, getPublicUrl } from "./s3";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -221,6 +221,111 @@ app.post("/cars/:id/photo", (req, res) => {
   });
 });
 
+/**
+ * @openapi
+ * /cars/{id}/photo-url:
+ *   post:
+ *     summary: Store a photo from a URL (server fetches, then uploads to S3)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [url]
+ *             properties:
+ *               url:
+ *                 type: string
+ *                 description: Publicly reachable image URL
+ *     responses:
+ *       200:
+ *         description: Car with updated photoUrl
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Car'
+ *       400:
+ *         description: url required, not an image, or exceeds 512 KB
+ *       404:
+ *         description: Car not found
+ */
+app.post("/cars/:id/photo-url", async (req, res) => {
+  const id = Number(req.params.id);
+  const bucketName = process.env.S3_BUCKET;
+  const url = req.body?.url;
+
+  if (!bucketName) {
+    return res.status(500).json({ error: "S3_BUCKET environment variable is not set" });
+  }
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "url is required" });
+  }
+
+  try {
+    const repo = AppDataSource.getRepository(Car);
+    const car = await repo.findOne({ where: { id } });
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      return res.status(400).json({ error: `Failed to fetch image: ${resp.status}` });
+    }
+    const contentType = resp.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) {
+      return res.status(400).json({ error: "URL does not point to an image" });
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    if (buffer.length > 512 * 1024) {
+      return res.status(400).json({ error: "Image exceeds 512 KB" });
+    }
+
+    await saveCarPhoto(car, buffer, contentType, bucketName, repo);
+    res.json(car);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+async function saveCarPhoto(
+  car: Car,
+  buffer: Buffer,
+  contentType: string,
+  bucketName: string,
+  repo: Repository<Car>
+) {
+  const s3 = getS3Client();
+  const ext = contentType.split("/")[1] || "jpg";
+  const filename = `cars/${car.id}-${Date.now()}.${ext}`;
+
+  // Remove the previous photo from S3 so re-uploads don't leave orphans
+  if (car.photoUrl) {
+    const oldKey = car.photoUrl.replace(`https://${bucketName}.s3.amazonaws.com/`, "");
+    if (oldKey && !oldKey.includes("://")) {
+      await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey }));
+    }
+  }
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucketName,
+      Key: filename,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+
+  car.photoUrl = getPublicUrl(bucketName, filename);
+  await repo.save(car);
+}
+
 async function handlePhotoUpload(req: express.Request, res: express.Response) {
   const id = Number(req.params.id);
   const bucketName = process.env.S3_BUCKET;
@@ -240,34 +345,7 @@ async function handlePhotoUpload(req: express.Request, res: express.Response) {
       return res.status(404).json({ error: "Car not found" });
     }
 
-    const s3 = getS3Client();
-    const filename = `cars/${id}-${Date.now()}-${file.originalname}`;
-
-    // Remove the previous photo from S3 so re-uploads don't leave orphans
-    if (car.photoUrl) {
-      const oldKey = car.photoUrl.replace(
-        `https://${bucketName}.s3.amazonaws.com/`,
-        ""
-      );
-      if (oldKey && !oldKey.includes("://")) {
-        await s3.send(
-          new DeleteObjectCommand({ Bucket: bucketName, Key: oldKey })
-        );
-      }
-    }
-
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucketName,
-        Key: filename,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-      })
-    );
-
-    car.photoUrl = getPublicUrl(bucketName, filename);
-    await repo.save(car);
-
+    await saveCarPhoto(car, file.buffer, file.mimetype, bucketName, repo);
     res.json(car);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

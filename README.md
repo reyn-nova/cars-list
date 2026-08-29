@@ -117,7 +117,12 @@ curl -X DELETE http://localhost:3000/cars -H "Content-Type: application/json" -d
 
 # Upload a photo for car #1 (stored in S3, URL saved on the car)
 curl -X POST http://localhost:3000/cars/1/photo -F "photo=@/path/to/image.jpg"
+
+# Or pass an image URL and let the server fetch + store it in S3
+curl -X POST http://localhost:3000/cars/1/photo-url -H "Content-Type: application/json" \
+  -d '{"url":"https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400"}'
 ```
+Both endpoints enforce a 512 KB max and replace any existing photo.
 
 The photo endpoint uploads the file to the S3 bucket set by `S3_BUCKET` and stores the
 public URL in `car.photoUrl`. Requires AWS credentials available to the app
