@@ -103,6 +103,7 @@ On a server with Docker + Terraform installed, pull and apply in one step:
 
 Notes:
 - Container env vars (ports, Postgres credentials) live in `main.tf`, not `.env`. `.env` is only used for local `npm run dev`.
+- Terraform reads its variables from `terraform.tfvars` or `TF_VAR_*` environment variables (or `-var`) — **not** from `.env`. To configure S3/photos for the deployed app, export e.g. `TF_VAR_s3_bucket`, `TF_VAR_aws_access_key`, `TF_VAR_aws_secret_key`, `TF_VAR_aws_region` (or put them in the gitignored `terraform.tfvars`) before deploying. `./deploy.sh` forwards and persists these automatically.
 - `terraform.tfstate` and `.terraform/` are gitignored; keep state on the server that runs `apply`.
 
 ## API examples

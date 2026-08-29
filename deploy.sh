@@ -14,14 +14,22 @@ terraform init -input=false
 
 TFVARS="terraform.tfvars"
 
-# Read any existing api_key. grep returns 1 on no match, so `|| true` keeps
-# `set -e` from aborting the script when the file is missing or has no match.
-EXISTING=""
-if [[ -f "$TFVARS" ]]; then
-  EXISTING=$(grep -E '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" 2>/dev/null \
-    | head -1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)
-fi
+# Read a terraform var: prefer the TF_VAR_<name> env var, else an existing
+# value in terraform.tfvars. (Terraform does NOT read .env — only tfvars,
+# -var, or TF_VAR_* env vars.)
+get_var() {
+  local name="$1" envname="TF_VAR_$1" val=""
+  if [[ -n "${!envname:-}" ]]; then
+    val="${!envname}"
+  elif [[ -f "$TFVARS" ]]; then
+    val=$(grep -E "^[[:space:]]*$name[[:space:]]*=" "$TFVARS" 2>/dev/null \
+      | head -1 | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/' || true)
+  fi
+  echo "$val"
+}
 
+# --- API key (with rotate prompt) ---
+EXISTING=$(get_var api_key)
 if [[ -n "$EXISTING" ]]; then
   echo "==========================================================="
   echo "API key management"
@@ -45,17 +53,29 @@ else
   echo "No existing API key found; generated a new one."
 fi
 
-# Persist the chosen key, preserving any other tfvars content.
-# grep -v returns 1 when it drops every line; `|| true` prevents that from
-# aborting the script.
-TMP=$(mktemp)
-if [[ -f "$TFVARS" ]]; then
-  grep -vE '^[[:space:]]*api_key[[:space:]]*=' "$TFVARS" > "$TMP" 2>/dev/null || true
-fi
-echo "api_key = \"$API_KEY\"" >> "$TMP"
-mv "$TMP" "$TFVARS"
+# --- S3 / AWS vars (forwarded through to the container) ---
+S3_BUCKET=$(get_var s3_bucket)
+AWS_ACCESS_KEY=$(get_var aws_access_key)
+AWS_SECRET_KEY=$(get_var aws_secret_key)
+AWS_REGION=$(get_var aws_region)
 
-terraform apply -replace=docker_image.app -auto-approve -var="api_key=${API_KEY}"
+# Persist all known vars to terraform.tfvars (gitignored) so redeploys keep them.
+{
+  echo "api_key = \"$API_KEY\""
+  [[ -n "$S3_BUCKET" ]] && echo "s3_bucket = \"$S3_BUCKET\""
+  [[ -n "$AWS_ACCESS_KEY" ]] && echo "aws_access_key = \"$AWS_ACCESS_KEY\""
+  [[ -n "$AWS_SECRET_KEY" ]] && echo "aws_secret_key = \"$AWS_SECRET_KEY\""
+  [[ -n "$AWS_REGION" ]] && echo "aws_region = \"$AWS_REGION\""
+} > "$TFVARS"
+
+# Build the -var arguments.
+APPLY_VARS="-var=\"api_key=$API_KEY\""
+[[ -n "$S3_BUCKET" ]] && APPLY_VARS="$APPLY_VARS -var=\"s3_bucket=$S3_BUCKET\""
+[[ -n "$AWS_ACCESS_KEY" ]] && APPLY_VARS="$APPLY_VARS -var=\"aws_access_key=$AWS_ACCESS_KEY\""
+[[ -n "$AWS_SECRET_KEY" ]] && APPLY_VARS="$APPLY_VARS -var=\"aws_secret_key=$AWS_SECRET_KEY\""
+[[ -n "$AWS_REGION" ]] && APPLY_VARS="$APPLY_VARS -var=\"aws_region=$AWS_REGION\""
+
+eval "terraform apply -replace=docker_image.app -auto-approve $APPLY_VARS"
 
 echo "==========================================================="
 echo "API_KEY for this deployment:"
