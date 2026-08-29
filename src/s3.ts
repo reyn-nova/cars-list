@@ -12,5 +12,9 @@ export function getS3Client(): S3Client {
 }
 
 export function getPublicUrl(bucket: string, key: string): string {
-  return `https://${bucket}.s3.amazonaws.com/${key}`;
+  const region = process.env.AWS_REGION || "us-east-1";
+  if (region === "us-east-1") {
+    return `https://${bucket}.s3.amazonaws.com/${key}`;
+  }
+  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 }

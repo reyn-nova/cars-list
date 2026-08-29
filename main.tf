@@ -30,7 +30,7 @@ variable "aws_secret_key" {
 
 variable "aws_region" {
   description = "AWS region"
-  default     = "us-east-1"
+  default     = "ap-southeast-3"
 }
 
 resource "docker_network" "cars_net" {
