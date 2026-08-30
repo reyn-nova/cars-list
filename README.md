@@ -37,27 +37,6 @@ docker compose up --build
 
 This starts Postgres (`db`) and the app (`app`). The API is available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/api-docs`.
 
-### Option B — Ubuntu via Multipass on macOS
-
-```bash
-# On macOS: create an Ubuntu VM and mount the project
-multipass launch 22.04 --name cars-vm
-multipass mount /Users/nova/Desktop/cars-list cars-vm:/home/ubuntu/cars-list
-multipass shell cars-vm
-
-# Inside the VM
-sudo apt update && sudo apt install -y docker.io docker-compose
-cd /home/ubuntu/cars-list
-sudo docker-compose up --build
-```
-
-Then get the VM IP and call the API:
-
-```bash
-multipass info cars-vm   # note the IPv4 address
-curl http://<VM_IP>:3000/cars
-```
-
 Notes:
 - `.env` is gitignored; the Compose file sets `PG_*` for you, so no `.env` is needed in Docker.
 - `synchronize: true` auto-creates the `cars` table on first run.
