@@ -1,0 +1,83 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY_DATA: ${{ secrets.STAGING_SSH_KEY }}
+          EC2_IP: ${{ vars.STAGING_EC2_IP }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY_DATA" > ~/.ssh/cars-list-staging
+          chmod 600 ~/.ssh/cars-list-staging
+          ssh-keyscan -H "$EC2_IP" >> ~/.ssh/known_hosts
+
+      - name: Create .env file
+        env:
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          API_KEY: ${{ secrets.STAGING_API_KEY }}
+          S3_BUCKET: ${{ vars.STAGING_S3_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          cat > .env.remote <<ENVEOF
+          NODE_ENV=production
+          PORT=3000
+          PG_HOST=db
+          PG_PORT=5432
+          PG_USER=postgres
+          PG_PASSWORD=${DB_PASSWORD}
+          PG_DATABASE=cars
+          API_KEY=${API_KEY}
+          S3_BUCKET=${S3_BUCKET}
+          S3_ENDPOINT=
+          S3_PUBLIC_ENDPOINT=
+          AWS_REGION=${AWS_REGION}
+          ENVEOF
+
+      - name: Deploy to staging
+        env:
+          EC2_IP: ${{ vars.STAGING_EC2_IP }}
+        run: |
+          SSH_KEY="$HOME/.ssh/cars-list-staging"
+
+          ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@"$EC2_IP" "mkdir -p ~/cars-list/{scripts,src}"
+
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+            docker-compose.yml Dockerfile package.json package-lock.json tsconfig.json \
+            ec2-user@"$EC2_IP":~/cars-list/
+
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -r scripts/ \
+            ec2-user@"$EC2_IP":~/cars-list/
+
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -r src/ \
+            ec2-user@"$EC2_IP":~/cars-list/
+
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no .env.remote \
+            ec2-user@"$EC2_IP":~/cars-list/.env
+
+          ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@"$EC2_IP" << 'REMOTE'
+          cd ~/cars-list
+          if docker compose build app && docker compose up -d --remove-orphans; then
+            if docker compose --profile tools run --rm migrate; then
+              echo "Migrations completed successfully."
+            else
+              echo "ERROR: Migrations failed!" >&2
+              exit 1
+            fi
+          else
+            echo "ERROR: Build or deploy failed!" >&2
+            exit 1
+          fi
+          REMOTE
+
+          rm -f .env.remote

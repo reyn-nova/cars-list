@@ -4,9 +4,20 @@ dist/
 *.log
 .DS_Store
 
+# Terraform
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.*
 *.tfvars
 *.tfvars.json
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Docker
+docker-compose.override.yml

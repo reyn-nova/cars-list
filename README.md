@@ -1,134 +1,182 @@
-# Cars List API
+# cars-list Infrastructure
 
-A minimal REST API to manage a list of cars, built with **Express.js** and **TypeScript**, using **TypeORM** with PostgreSQL.
+## Architecture Overview
 
-## Features
+This project uses a unified architecture across dev, staging, and production:
 
-- `GET /cars` — list all cars, with optional `?name=` case-insensitive search and `?limit=` / `?offset=` pagination (limit capped at 100)
-- `POST /cars` — add one or more cars (array, min 1; `name` and `type` required per car)
-- `DELETE /cars` — delete one or more cars by `id` (array, min 1)
-- `GET /health` — health check (used by container healthchecks)
-- Swagger docs at `/api-docs`
+- **Docker Compose** runs on an EC2 instance with all services in containers
+- **PostgreSQL** runs as a Docker container in every environment (not RDS)
+- **Docker named volumes** provide persistent storage for Postgres data on the EC2 root volume
+- **S3 bucket** per environment for photo storage (real AWS S3 in staging/production)
+- **MinIO** for local development only (S3 emulation)
+- **Automated backups** via a sidecar container running pg_dump on a schedule
 
-> **Authentication:** write endpoints (`POST /cars`, `DELETE /cars`) and all photo
-> endpoints require a shared API key. Send it as `Authorization: Bearer <API_KEY>`
-> or via the `X-API-Key` header. Set `API_KEY` in the environment (see `.env.example`).
-> Read-only routes (`GET /cars`, `GET /health`) are public.
+## Directory Structure
 
-## Quick Start
-
-```bash
-docker compose up --build
+```
+cars-list/
+├── docker-compose.yml          # Identical across all environments
+├── Dockerfile                  # ARM64-compatible (node:24-alpine)
+├── scripts/
+│   ├── backup.sh               # pg_dump + upload to S3
+│   └── restore.sh              # Download + restore from S3
+├── infra/
+│   ├── modules/
+│   │   ├── ec2-app-db/         # EC2 instance (root volume only)
+│   │   ├── s3/                 # S3 bucket
+│   │   └── networking/         # VPC, subnet, security group
+│   └── environments/
+│       ├── dev/                # Isolated Terraform state
+│       ├── staging/            # Isolated Terraform state
+│       └── production/         # Isolated Terraform state
+├── .github/workflows/
+│   ├── ci.yml                  # Tests on PRs
+│   ├── deploy-staging.yml      # Auto-deploy on merge to main
+│   └── deploy-production.yml   # Manual approval / tag
+└── src/
+    └── s3.ts                   # S3/MinIO client (endpoint-aware)
 ```
 
-> If your Docker uses the standalone v1 binary, use `docker-compose up --build` instead.
+## Environment Variables
 
-This starts Postgres (`db`) and the app (`app`). The API is available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/api-docs`.
+All connection info comes from environment variables:
 
-Notes:
-- `.env` is gitignored; the Compose file sets `PG_*` for you, so no `.env` is needed in Docker.
-- `synchronize: true` auto-creates the `cars` table on first run.
-- Stop: `docker compose down` (or `docker-compose down`). Wipe the DB too: `docker compose down -v`.
-- For local development without Docker, install Node.js and PostgreSQL, then run `cp .env.example .env && npm install && npm run dev`.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PG_HOST` | Postgres host | `db` (Docker service) |
+| `PG_PORT` | Postgres port | `5432` |
+| `PG_USER` | Postgres user | `postgres` |
+| `PG_PASSWORD` | Postgres password | (required) |
+| `PG_DATABASE` | Postgres database | `cars` |
+| `S3_BUCKET` | S3 bucket name | `cars-list` |
+| `S3_ENDPOINT` | S3 SDK endpoint URL (empty for real AWS) | (empty) |
+| `S3_PUBLIC_ENDPOINT` | Public-facing S3 URL for browsers (falls back to S3_ENDPOINT) | (empty) |
+| `AWS_ACCESS_KEY_ID` | AWS access key | (required for local dev; use IAM role in deployed envs) |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | (required for local dev; use IAM role in deployed envs) |
+| `AWS_REGION` | AWS region | `ap-southeast-3` |
+| `API_KEY` | Application API key | (optional) |
+| `NODE_ENV` | Environment | `development` |
+| `APP_PORT` | Host port mapping for the app | `3000` |
+| `BACKUP_RETENTION_DAYS` | Days to keep backups | `7` |
 
-## Running with Terraform
+## Local Development
 
-This project can also be provisioned with Terraform using the **Docker provider** (no cloud account required). It replaces `docker-compose.yml` with `main.tf`.
+```bash
+# Copy env file and configure
+cp .env.example .env
+# Edit .env with your values
+
+# Start all services (app, postgres, minio)
+docker compose up -d
+
+# Run migrations
+docker compose --profile tools run --rm migrate
+
+# Run tests
+docker compose run --rm app sh -c "npm test"
+
+# Access the API
+curl http://localhost:3000/health
+
+# Access MinIO console
+open http://localhost:9001  # minioadmin / minioadmin
+```
+
+## Deployment
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) installed and running
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) CLI installed
+1. Terraform state backend (S3 with native locking):
+```bash
+aws s3 mb s3://cars-list-terraform-state --region ap-southeast-3
+```
 
-### Usage
+2. SSH key pair for EC2 access (place at `~/.ssh/cars-list-{env}`)
+
+### Deploy to Staging
+
+Automated on merge to `main` branch via GitHub Actions.
+
+Required GitHub secrets: `STAGING_SSH_KEY`, `STAGING_DB_PASSWORD`, `STAGING_API_KEY`
+Required GitHub vars: `STAGING_EC2_IP`, `STAGING_S3_BUCKET`, `AWS_REGION`
+
+### Deploy to Production
+
+Manual trigger via GitHub Actions workflow dispatch or push a version tag:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Required GitHub secrets: `PRODUCTION_SSH_KEY`, `PROD_DB_PASSWORD`, `PROD_API_KEY`
+Required GitHub vars: `PRODUCTION_EC2_IP`, `PROD_S3_BUCKET`, `AWS_REGION`
+
+### Manual Deploy
+
+Create a `.env.{env}` file from `.env.example` with your environment values (e.g., `.env.staging`), then:
 
 ```bash
-terraform init      # download the docker provider (needs internet, once)
-terraform apply     # build the app image and start db + app containers
+./deploy.sh dev       # Deploy to dev
+./deploy.sh staging   # Deploy to staging
+./deploy.sh production # Deploy to production
 ```
 
-The API is available at `http://localhost:3000` and Swagger docs at `http://localhost:3000/api-docs`.
+## Backup & Restore
 
-Inspect the plan before applying:
+### Automated Backups
+
+The backup sidecar container runs pg_dump every 6 hours:
+- Backups stored in `s3://<bucket>/backups/`
+- Retention: 7 days (configurable via `BACKUP_RETENTION_DAYS`)
+- Format: gzipped SQL dumps
+
+### Manual Backup
 
 ```bash
-terraform plan
+docker compose run --rm backup /usr/local/bin/backup.sh
 ```
 
-Tear everything down:
+### Restore from Backup
 
 ```bash
-terraform destroy
+# List available backups (AWS)
+aws s3 ls s3://<bucket>/backups/
+
+# List available backups (MinIO)
+aws s3 ls s3://<bucket>/backups/ --endpoint-url http://localhost:9000
+
+# Restore a specific backup
+docker compose run --rm backup ./scripts/restore.sh backups/cars_20260830_120000.sql.gz
 ```
 
-### Deploying to a server
-
-On a server with Docker + Terraform installed, pull and apply in one step:
+### Restore to a Different Database
 
 ```bash
-./deploy.sh   # git pull && terraform init && terraform apply
+PGDATABASE=cars_restored docker compose run --rm backup ./scripts/restore.sh backups/cars_20260830_120000.sql.gz
 ```
 
-Notes:
-- Container env vars (ports, Postgres credentials) live in `main.tf`, not `.env`.
-- Terraform reads its variables from `terraform.tfvars` or `TF_VAR_*` environment variables (or `-var`) — **not** from `.env`. To configure S3/photos for the deployed app, export e.g. `TF_VAR_s3_bucket`, `TF_VAR_aws_access_key`, `TF_VAR_aws_secret_key`, `TF_VAR_aws_region` (or put them in the gitignored `terraform.tfvars`) before deploying. `./deploy.sh` forwards and persists these automatically.
-- `terraform.tfstate` and `.terraform/` are gitignored; keep state on the server that runs `apply`.
+## Infrastructure Notes
 
-## API examples
+### t4g.micro Instance
 
-```bash
-# Add cars
-curl -X POST http://localhost:3000/cars -H "Content-Type: application/json" \
-  -d '[{"name": "Ocelot Pariah", "type": "Sports"}, {"name": "Pegassi Zentorno", "type": "Super"}]'
+The EC2 t4g.micro (2 vCPU, 1 GB RAM, ARM64/Graviton) is a cost-minimal choice suitable for low to moderate traffic. The same instance type is used across all environments for consistency.
 
-# List cars
-curl http://localhost:3000/cars
+**Warning:** T4g instances use burstable performance. If sustained CPU load exhausts T-series burst credits, the instance will be throttled. Production workloads with sustained high CPU should be resized to a non-burstable instance type (e.g., `t4g.small` or `m7g.large`).
 
-# Search
-curl "http://localhost:3000/cars?name=tesla"
+### ARM64 Compatibility
 
-# Delete by id
-curl -X DELETE http://localhost:3000/cars -H "Content-Type: application/json" -d '[1, 2]'
+All Docker images are ARM64-compatible:
+- `node:24-alpine` publishes arm64 natively
+- `postgres:18` publishes arm64 natively
+- `minio/minio` publishes arm64 natively
 
-# Upload a photo for car #1 (stored in S3, URL saved on the car)
-curl -X POST http://localhost:3000/cars/1/photo -F "photo=@/path/to/image.jpg"
+**Native npm dependencies:** If your project uses native addons (e.g., `bcrypt`, `sharp`, `node-sass`), they must be rebuilt for ARM64. Check `npm ls` for native modules and ensure `npm install` runs on the ARM64 target or use `--platform=linux/arm64` with Docker buildx.
 
-# Or pass an image URL and let the server fetch + store it in S3
-curl -X POST http://localhost:3000/cars/1/photo-url -H "Content-Type: application/json" \
-  -d '{"url":"https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400"}'
-```
-Both endpoints enforce a 512 KB max and replace any existing photo.
+### Security
 
-# Delete a car's photo (removes the S3 object and clears photoUrl)
-curl -X DELETE http://localhost:3000/cars/1/photo
-```
-
-The photo endpoint uploads the file to the S3 bucket set by `S3_BUCKET` and stores the
-public URL in `car.photoUrl`. Requires AWS credentials available to the app
-(`aws configure` / `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for local dev, or an IAM role in containers).
-
-> **Public-read access:** objects rely on a bucket policy that allows `s3:GetObject`
-> for everyone (see `aws/main.tf`). The code does **not** set an object ACL, because
-> buckets with the AWS default "Bucket owner enforced" object ownership reject ACLs and
-> would fail the upload. Provision your bucket with `aws/main.tf` (or apply an equivalent
-> public-read bucket policy) so the returned URLs actually resolve.
-
-> **SSRF protection:** the `photo-url` endpoint only fetches URLs that resolve to a
-> public IP and are `http(s)`; internal/metadata addresses (`127.0.0.1`, `169.254.169.254`,
-> `192.168.x`, etc.) are rejected.
-
-> **Schema & migrations:** in production (`NODE_ENV=production`, set by the Docker/Terraform
-> configs) the schema is managed by TypeORM migrations (`src/migration`) and `synchronize`
-> is disabled so it can never auto-mutate the DB. Local development keeps `synchronize: true`
-> for convenience.
-
-## Terraform on AWS (S3)
-
-`aws/main.tf` provisions an S3 bucket (public-read objects) for car photos — a free-tier-friendly
-way to test Terraform's AWS provider. Requires AWS credentials configured locally.
-
-```bash
-cd aws
-terraform init
-terraform apply
-```
+- Secrets are injected via environment variables at deploy time
+- EBS root volume is encrypted at rest
+- IMDSv2 is enforced on EC2 instances (prevents SSRF-based credential theft)
+- S3 bucket policies use bucket-owner-enforced object ownership
+- Security group restricts access to ports 3000 (app) and 22 (SSH)
+- Postgres port 5432 is mapped to the host inside Docker but is only accessible within the Docker network by other containers

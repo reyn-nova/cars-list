@@ -10,3 +10,6 @@ terraform.tfstate.*
 .gitignore
 *.md
 deploy.sh
+infra/
+test/
+.github/
