@@ -15,19 +15,7 @@ A minimal REST API to manage a list of cars, built with **Express.js** and **Typ
 > or via the `X-API-Key` header. Set `API_KEY` in the environment (see `.env.example`).
 > Read-only routes (`GET /cars`, `GET /health`) are public.
 
-## Local development
-
-Requires Node.js and a PostgreSQL database.
-
-```bash
-cp .env.example .env   # adjust credentials
-npm install
-npm run dev           # http://localhost:3000
-```
-
-## Running with Docker
-
-### Option A — Directly on your machine (macOS)
+## Quick Start
 
 ```bash
 docker compose up --build
@@ -41,6 +29,7 @@ Notes:
 - `.env` is gitignored; the Compose file sets `PG_*` for you, so no `.env` is needed in Docker.
 - `synchronize: true` auto-creates the `cars` table on first run.
 - Stop: `docker compose down` (or `docker-compose down`). Wipe the DB too: `docker compose down -v`.
+- For local development without Docker, install Node.js and PostgreSQL, then run `cp .env.example .env && npm install && npm run dev`.
 
 ## Running with Terraform
 
@@ -81,7 +70,7 @@ On a server with Docker + Terraform installed, pull and apply in one step:
 ```
 
 Notes:
-- Container env vars (ports, Postgres credentials) live in `main.tf`, not `.env`. `.env` is only used for local `npm run dev`.
+- Container env vars (ports, Postgres credentials) live in `main.tf`, not `.env`.
 - Terraform reads its variables from `terraform.tfvars` or `TF_VAR_*` environment variables (or `-var`) — **not** from `.env`. To configure S3/photos for the deployed app, export e.g. `TF_VAR_s3_bucket`, `TF_VAR_aws_access_key`, `TF_VAR_aws_secret_key`, `TF_VAR_aws_region` (or put them in the gitignored `terraform.tfvars`) before deploying. `./deploy.sh` forwards and persists these automatically.
 - `terraform.tfstate` and `.terraform/` are gitignored; keep state on the server that runs `apply`.
 
@@ -130,7 +119,7 @@ public URL in `car.photoUrl`. Requires AWS credentials available to the app
 
 > **Schema & migrations:** in production (`NODE_ENV=production`, set by the Docker/Terraform
 > configs) the schema is managed by TypeORM migrations (`src/migration`) and `synchronize`
-> is disabled so it can never auto-mutate the DB. Local `npm run dev` keeps `synchronize: true`
+> is disabled so it can never auto-mutate the DB. Local development keeps `synchronize: true`
 > for convenience.
 
 ## Terraform on AWS (S3)
